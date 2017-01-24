@@ -6,3 +6,6 @@ You'll need to set the following environment variables:
 - AU_USERNAME: Your AU username
 - AU_PASSWORD: Your AU password
 - CURRENT_GRADES: The current amount of grades before running the script
+
+## Disclaimer
+Just a dirty hacky hacky script which takes away the burden to check AU's site for new grades.
