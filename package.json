@@ -1,18 +1,16 @@
 {
-  "name": "au-stads",
+  "name": "au-grade-checker-v2",
   "version": "1.0.0",
-  "description": "Quickly check AU Stads system",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "author": "Henning Horn",
   "license": "MIT",
   "dependencies": {
     "cheerio": "^0.22.0",
     "clockwork": "^0.1.4",
-    "express": "^4.14.0",
     "now-logs": "^0.0.7",
     "request": "^2.79.0"
+  },
+  "scripts": {
+    "start": "node index.js"
   }
 }

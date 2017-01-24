@@ -1,78 +1,256 @@
+// Library to perform HTTP request
 var request = require('request')
+
+// Library to parse HTML
 var cheerio = require('cheerio')
+
+// Library to send SMS
 var clockwork = require('clockwork')({key:process.env.CLOCKWORK_KEY});
-var express = require('express')
 
+// Library to stream real time logs
 var logId = process.env.LOG_ID || 'au-stads-log-' + Math.ceil(Math.random()*99999999)
-
+console.log('Log ID: ' + logId)
 require('now-logs')(logId)
 
-console.log('Log id: ' + logId)
+// The page where the results lives
+var resultsURL = 'https://sbstads.au.dk/sb_STAP/sb/resultater/studresultater.jsp'
 
-var app = express()
+// Let's create a cookie jar to hold our cookies between requests
+var cookieJar = request.jar()
 
-var numberOfChecks = 0
-
-app.get('/', function (req, res) {
-  res.send('Checked ' + numberOfChecks + ' times')
+// Set this jar as a default for all requests
+var request = request.defaults({
+  jar: cookieJar
 })
 
-app.listen('8888')
+var interval = setInterval(goCheck, 60000*5)
 
-var interval = setInterval(checkGrades, 30000)
-
-function checkGrades () {
-  numberOfChecks++
-
-  var options = {
-    url: 'https://sbstads.au.dk/sb_STAP/sb/resultater/studresultater.jsp',
-    headers: {
-      'User-Agent': 'Dovenskab 2017',
-      'Cookie': 'selvbetjening=' + process.env.AU_COOKIE
-    }
-  }
-
-  console.log(new Date() + ': Checking grades...')
-  request(options, function (error, response, html) {
-    console.log(new Date() + ': Got response from AU...')
-    if (!error) {
-      let $ = cheerio.load(html)
-      let results = []
-
-      $('#resultTable tbody tr').each(function (i, el) {
-        let columns = $(this).find('td')
-        results.push({
-          course: columns.eq(0).text().trim(),
-          date: columns.eq(1).text().trim(),
-          grade: columns.eq(2).text().trim(),
-          ectsGrade: columns.eq(3).text().trim(),
-          ectsPoints: columns.eq(4).text().trim(),
+function goCheck() {
+  openStadsWithoutCookie()
+  .then(url => {
+    getLoginURL(url)
+    .then(url => {
+      loginToStadsThroughWayf(url, process.env.AU_USERNAME, process.env.AU_PASSWORD)
+      .then(page => {
+        performManualLogin(page)
+        .then(() => {
+          parseResultsPage(resultsURL)
+          .then(results => {
+            if (results.length > process.env.CURRENT_GRADES) {
+              logThis('A new grade! Newest: ' + results[0].course)
+              clearInterval(interval)
+              clockwork.sendSms({
+                To: process.env.PHONE_NUMBER,
+                Content: 'Ny karakter! ' + results[0].course + ': ' + results[0].grade
+              }, function (a, b) {})
+            } else {
+              logThis('Nothing new, just ' + results.length + ' grades available')
+            }
+          })
+          .catch(err => {
+            clearInterval(interval)
+            console.log(err)
+          })
         })
       })
-
-      if (results.length > 0) {
-        console.log(new Date() + ': Current grades', results.length)
-        console.log(new Date() + ': ' + results[0].course + ': ' + results[0].grade)
-      }
-
-      if (results.length == 11) {
-        console.log(new Date() + ': Nothing new')
-      } else if (results.length == 0) {
-        console.log(new Date() + ': Something went wrong')
+      .catch(err => {
         clearInterval(interval)
-      } else {
-        console.log(new Date() + ': New grades. Closing!')
-        clearInterval(interval)
-        clockwork.sendSms({
-          To: process.env.PHONE_NUMBER,
-          Content: 'Ny karakter! ' + results[0].course + ': ' + results[0].grade
-        }, function (a, b) {})
-      }
-    } else {
-      console.log('ERROR')
-      clearInterval(interval)
-    }
+        console.log('login error!', err)
+      })
+    })
+  })
+  .catch(err => {
+    clearInterval(interval)
+    console.log('error', err)
   })
 }
 
-console.log('Running AU grade checker')
+// We can't follow meta tag or javascript redirects
+// So we'll manually post noscript forms
+// page: Markup from the noscript page
+function performManualLogin(page) {
+  return new Promise(function (resolve, reject) {
+    // Load up the page through cheerio <3
+    var $ = cheerio.load(page)
+
+    // Fetch form action URL and the hidden SAMLResponse field
+    var form = $('form').eq(0)
+    var postURL = form.attr('action')
+    var SAMLResponse = form.find('input[type="hidden"]').val()
+
+    // Setup our request
+    var requestOptions = {
+      url: postURL,
+      method: 'POST',
+      form: {
+        SAMLResponse
+      }
+    }
+
+    request(requestOptions, function (error, response, body) {
+      if (!error) {
+        // We end up getting redirected to another page
+        // where we need to perform another manual login
+        // So bascially the same thing as before
+        var $ = cheerio.load(body)
+        var form = $('form#samlform')
+        var postURL = form.attr('action')
+        var formFields = {
+          SAMLResponse: form.find('input[name=SAMLResponse]').val(),
+          RelayState: form.find('input[name=RelayState]').val()
+        }
+
+        var requestOptions = {
+          url: postURL,
+          method: 'POST',
+          form: formFields
+        }
+
+        request(requestOptions, function (error, response, body) {
+          if (! error) {
+            // Yay, we probably got through, so let's resolve our promise
+            resolve()
+          } else {
+            reject(error)
+          }
+        })
+      } else {
+        reject(error)
+      }
+    })
+  })
+}
+
+// We use this function when our jar contains the right cookies
+// We then load the page and parse it through cheerio :)
+function parseResultsPage(url) {
+  logThis('Lets go to the results page...')
+  return new Promise(function (resolve, reject) {
+    var requestOptions = {
+      url: url,
+      method: 'GET'
+    }
+
+    request(requestOptions, function (error, response, html) {
+      if (!error) {
+        // We seem to have some html to play with
+        // Let's load it up
+        let $ = cheerio.load(html)
+        let results = []
+
+        // This is where the results are saved
+        // Let's go through them
+        $('#resultTable tbody tr').each(function (i, el) {
+          let columns = $(this).find('td')
+          results.push({
+            course: columns.eq(0).text().trim(),
+            date: columns.eq(1).text().trim(),
+            grade: columns.eq(2).text().trim(),
+            ectsGrade: columns.eq(3).text().trim(),
+            ectsPoints: columns.eq(4).text().trim(),
+          })
+        })
+
+        // Let's check our results
+        if (results.length > 0) {
+          // We got something, parse them along with our promise resolve method
+          logThis('Got some grades from page, ' + results.length + ' in total')
+          resolve(results)
+        } else {
+          // Something went wrong, maybe no results or just a failed page load
+          logThis('Could not see any results...')
+          reject('Could not fetch results')
+        }
+      } else {
+        logThis('Error loading results page...')
+        reject(error)
+      }
+    })
+  })
+}
+
+// We need to follow some browser-only redirects
+// to get the real url to post our credentials to
+function getLoginURL(url) {
+  logThis('Fetching real login URL...')
+  return new Promise(function (resolve, reject) {
+    var requestOptions = {
+      url: url,
+      method: 'GET'
+    }
+
+    request(requestOptions, function (error, response, body) {
+      if (!error) {
+        logThis('Got the URL, following it...')
+        resolve(response.request.uri.href)
+      } else {
+        logThis('Could not get URL...')
+        reject(error)
+      }
+    })
+  })
+}
+
+// Let's post our credentials to WAYF!
+function loginToStadsThroughWayf(url, username, password) {
+  logThis('Logging into AU Stads through WAYF...')
+  return new Promise(function (resolve, reject) {
+    var requestOptions = {
+      url: url,
+      method: 'POST',
+      form: {
+        username,
+        password
+      }
+    }
+
+    request(requestOptions, function (error, response, body) {
+      if (!error) {
+        logThis('Login success')
+        resolve(body)
+      } else {
+        logThis('Login failed')
+        reject(error)
+      }
+    })
+  })
+}
+
+// Let's try to open AU Stads without a cookie
+// This will result in a great cookie and query parameters
+// we need to use later on
+function openStadsWithoutCookie() {
+  logThis('Trying to open AU Stads without cookie...')
+
+  // So yeah, this is not pretty
+  // We smash all cookies
+  request = request.defaults({
+    jar: request.jar()
+  })
+
+  return new Promise(function (resolve, reject) {
+    var requestOptions = {
+      url: resultsURL,
+      method: 'GET'
+    }
+
+    request(requestOptions, function (error, response, body) {
+      if (!error) {
+        logThis('Got cookie, following redirect...')
+        var $ = cheerio.load(body)
+
+        // Weird redirect
+        var gotoURL = $('meta[http-equiv="refresh"]').attr('content').replace(/0;url=/, '')
+
+        resolve(gotoURL)
+      } else {
+        reject(error)
+      }
+    })
+  })
+}
+
+// What is this?
+function logThis(log) {
+  console.log(new Date() + ': ' + log)
+}
