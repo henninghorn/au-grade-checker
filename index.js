@@ -5,7 +5,7 @@ var request = require('request')
 var cheerio = require('cheerio')
 
 // Library to send SMS
-var clockwork = require('clockwork')({key:process.env.CLOCKWORK_KEY});
+var clockwork = require('clockwork')({key: process.env.CLOCKWORK_KEY || 'abc123'});
 
 // Library to stream real time logs
 var logId = process.env.LOG_ID || 'au-stads-log-' + Math.ceil(Math.random()*99999999)
@@ -14,6 +14,10 @@ require('now-logs')(logId)
 
 // The page where the results lives
 var resultsURL = 'https://sbstads.au.dk/sb_STAP/sb/resultater/studresultater.jsp'
+var AU_USERNAME = process.env.AU_USERNAME || ''
+var AU_PASSWORD = process.env.AU_PASSWORD || ''
+var CURRENT_GRADES = process.env.CURRENT_GRADES || ''
+var PHONE_NUMBER = process.env.PHONE_NUMBER || ''
 
 // Let's create a cookie jar to hold our cookies between requests
 var cookieJar = request.jar()
@@ -25,43 +29,29 @@ var request = request.defaults({
 
 var interval = setInterval(goCheck, 60000*5)
 
+goCheck()
+
 function goCheck() {
   openStadsWithoutCookie()
-  .then(url => {
-    getLoginURL(url)
-    .then(url => {
-      loginToStadsThroughWayf(url, process.env.AU_USERNAME, process.env.AU_PASSWORD)
-      .then(page => {
-        performManualLogin(page)
-        .then(() => {
-          parseResultsPage(resultsURL)
-          .then(results => {
-            if (results.length > process.env.CURRENT_GRADES) {
-              logThis('A new grade! Newest: ' + results[0].course)
-              clearInterval(interval)
-              clockwork.sendSms({
-                To: process.env.PHONE_NUMBER,
-                Content: 'Ny karakter! ' + results[0].course + ': ' + results[0].grade
-              }, function (a, b) {})
-            } else {
-              logThis('Nothing new, just ' + results.length + ' grades available')
-            }
-          })
-          .catch(err => {
-            clearInterval(interval)
-            console.log(err)
-          })
-        })
-      })
-      .catch(err => {
-        clearInterval(interval)
-        console.log('login error!', err)
-      })
-    })
+  .then(url => getLoginURL(url))
+  .then(url => loginToStadsThroughWayf(url, AU_USERNAME, AU_PASSWORD))
+  .then(page => performManualLogin(page))
+  .then(() => parseResultsPage(resultsURL))
+  .then(results => {
+    if (results.length > CURRENT_GRADES) {
+      logThis('A new grade! Newest: ' + results[0].course)
+      clearInterval(interval)
+      clockwork.sendSms({
+        To: PHONE_NUMBER,
+        Content: 'Ny karakter! ' + results[0].course + ': ' + results[0].grade
+      }, function (a, b) {})
+    } else {
+      logThis('Nothing new, just ' + results.length + ' grades available')
+    }
   })
-  .catch(err => {
+  .catch(error => {
     clearInterval(interval)
-    console.log('error', err)
+    console.log('error', error)
   })
 }
 
