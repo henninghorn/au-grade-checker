@@ -1,3 +1,29 @@
+// Library to enable http interface
+var Hapi = require('hapi')
+
+var server = new Hapi.Server()
+server.connection({
+  host: 'localhost',
+  port: 8000
+})
+
+server.route({
+  method: 'GET',
+  path: '/',
+  handler: (request, reply) => {
+    return reply(logs)
+  }
+})
+
+server.start(err => {
+  if (err) throw err
+
+  logThis('Server running at: ' + server.info.uri)
+})
+
+// Collection of logs
+var logs = []
+
 // Library to perform HTTP request
 var request = require('request')
 
@@ -32,6 +58,9 @@ var interval = setInterval(goCheck, 60000*5)
 goCheck()
 
 function goCheck() {
+  // Clear logs
+  logs = []
+
   openStadsWithoutCookie()
   .then(url => getLoginURL(url))
   .then(url => loginToStadsThroughWayf(url, AU_USERNAME, AU_PASSWORD))
@@ -242,5 +271,7 @@ function openStadsWithoutCookie() {
 
 // What is this?
 function logThis(log) {
-  console.log(new Date() + ': ' + log)
+  var entry = new Date() + ': ' + log
+  logs.push(entry)
+  console.log(entry)
 }
