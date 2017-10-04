@@ -9,9 +9,13 @@
     "clockwork": "^0.1.4",
     "hapi": "^16.3.0",
     "now-logs": "^0.0.7",
-    "request": "^2.79.0"
+    "request": "^2.79.0",
+    "snyk": "^1.42.3"
   },
   "scripts": {
-    "start": "node index.js"
-  }
+    "start": "node index.js",
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
+  },
+  "snyk": true
 }
