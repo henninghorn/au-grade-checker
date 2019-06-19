@@ -24,6 +24,7 @@ function checkGrades() {
                   Content: 'Ny karakter! ' + grades[0].course + ': ' + grades[0].grade
                 }, function (a, b) {})
             } else {
+                console.log('No new grades, still ' + grades.length + ' grades.')
                 setTimeout(checkGrades, 1000*60*15)
             }
         })
