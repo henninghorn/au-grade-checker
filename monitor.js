@@ -28,6 +28,9 @@ function checkGrades() {
                 setTimeout(checkGrades, 1000*60*15)
             }
         })
+        .catch(error => {
+            console.log({error})
+        })
 }
 
 checkGrades()
