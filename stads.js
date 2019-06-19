@@ -1,5 +1,6 @@
 const Request = require('request') 
 const cheerio = require('cheerio')
+const urlPackage = require('url')
 
 function logging(message) {
     console.log('Log:', message)
@@ -78,7 +79,7 @@ function Stads() {
 
     lib.loginToStadsThroughWayf = (url) => {
         return new Promise((resolve, reject) => {
-            let urlParams = new URLSearchParams(url)
+            let urlParams = new urlPackage.URLSearchParams(url)
             let idp = 'https://birk.wayf.dk/birk.php/wayf.au.dk'
             let wayfUrl = urlParams.get('return') + '&' + urlParams.get('returnIDParam') + '=' + encodeURIComponent(idp)
             let options = {
