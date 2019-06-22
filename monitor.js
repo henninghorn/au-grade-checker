@@ -22,7 +22,13 @@ function checkGrades() {
                 clockwork.sendSms({
                   To: process.env.PHONE_NUMBER,
                   Content: 'Ny karakter! ' + grades[0].course + ': ' + grades[0].grade
-                }, function (a, b) {})
+                }, function (error, response) {
+                    if (error) {
+                        throw new Error(error)
+                    } else {
+                        console.log('Message sent')
+                    }
+                })
             } else {
                 console.log('No new grades, still ' + grades.length + ' grades.')
                 setTimeout(checkGrades, 1000*60*15)
