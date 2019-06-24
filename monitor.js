@@ -19,9 +19,12 @@ function checkGrades() {
         .then(stads.getGrades)
         .then(grades => {
             if (grades.length > process.env.CURRENT_GRADES) {
+                let text = 'Ny karakter! ' + grades[0].course + ': ' + grades[0].grade
+                console.log(text)
+                
                 clockwork.sendSms({
                   To: process.env.PHONE_NUMBER,
-                  Content: 'Ny karakter! ' + grades[0].course + ': ' + grades[0].grade
+                  Content: text
                 }, function (error, response) {
                     if (error) {
                         throw new Error(error)
