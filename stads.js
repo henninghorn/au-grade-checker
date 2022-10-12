@@ -7,7 +7,6 @@ function logging(message) {
 }
 
 function Stads() {
-
     const resultsURL = 'https://sbstads.au.dk/sb_STAP/sb/resultater/studresultater.jsp'
     const providersURL = 'https://wayf.wayf.dk/dsbackend?entityID=https://saml.sbstads.au.dk&query=&start=0&end=10&lang=da&feds=&providerids=&logtag=xxx&delta=1'
     let cookieJar = Request.jar()
